@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: dead-x-bot-scanner
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 18.18.0
+      - key: NODE_ENV
+        value: production
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: false
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium-browser
+      - key: MONGODB_URI
+        sync: false
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: "*"
