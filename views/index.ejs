@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <h1>💀 DEAD-X-BOT</h1>
+                <p class="subtitle">WhatsApp Session Scanner</p>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="hero-section">
+                <h2>Generate Your WhatsApp Session</h2>
+                <p>Create a secure session ID for your DEAD-X-BOT deployment</p>
+                
+                <div class="features">
+                    <div class="feature">
+                        <span class="icon">🔒</span>
+                        <h3>Secure</h3>
+                        <p>Encrypted session storage</p>
+                    </div>
+                    <div class="feature">
+                        <span class="icon">⚡</span>
+                        <h3>Fast</h3>
+                        <p>Real-time QR generation</p>
+                    </div>
+                    <div class="feature">
+                        <span class="icon">☁️</span>
+                        <h3>Cloud</h3>
+                        <p>MongoDB storage</p>
+                    </div>
+                </div>
+
+                <a href="/scan" class="btn btn-primary btn-large">
+                    Start Scanning →
+                </a>
+
+                <div class="info-box">
+                    <h4>How it works:</h4>
+                    <ol>
+                        <li>Click "Start Scanning" to generate a QR code</li>
+                        <li>Scan the QR code with WhatsApp on your phone</li>
+                        <li>Get your unique Session ID</li>
+                        <li>Use the Session ID in your DEAD-X-BOT deployment</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="api-docs">
+                <h3>API Endpoints</h3>
+                <div class="endpoint">
+                    <code>GET /scan</code>
+                    <span>- Display QR scanning page</span>
+                </div>
+                <div class="endpoint">
+                    <code>POST /scan/start</code>
+                    <span>- Initialize new session</span>
+                </div>
+                <div class="endpoint">
+                    <code>GET /session/:id</code>
+                    <span>- Retrieve session data</span>
+                </div>
+                <div class="endpoint">
+                    <code>GET /session/validate/:id</code>
+                    <span>- Validate session</span>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 DEAD-X-BOT | Built with ❤️ for WhatsApp Automation</p>
+        </footer>
+    </div>
+</body>
+</html>
