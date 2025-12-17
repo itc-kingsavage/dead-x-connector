@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <h1>💀 DEAD-X-BOT</h1>
+                <p class="subtitle">Session Scanner</p>
+            </div>
+            <a href="/" class="btn btn-secondary">← Back Home</a>
+        </header>
+
+        <main class="scan-content">
+            <div class="scan-container">
+                <!-- Step 1: Initial State -->
+                <div id="step-initial" class="step active">
+                    <h2>Generate WhatsApp Session</h2>
+                    <p>Click the button below to generate a QR code</p>
+                    <button id="startScanBtn" class="btn btn-primary btn-large">
+                        Generate QR Code
+                    </button>
+                </div>
+
+                <!-- Step 2: Loading -->
+                <div id="step-loading" class="step">
+                    <div class="loader"></div>
+                    <p>Initializing WhatsApp client...</p>
+                    <p class="text-muted">This may take a few seconds</p>
+                </div>
+
+                <!-- Step 3: QR Code Display -->
+                <div id="step-qr" class="step">
+                    <h2>Scan QR Code</h2>
+                    <p>Open WhatsApp on your phone and scan this QR code</p>
+                    
+                    <div class="qr-container">
+                        <img id="qrImage" src="" alt="QR Code">
+                    </div>
+
+                    <div class="instructions">
+                        <h4>📱 How to scan:</h4>
+                        <ol>
+                            <li>Open WhatsApp on your phone</li>
+                            <li>Tap Menu (⋮) or Settings</li>
+                            <li>Tap "Linked Devices"</li>
+                            <li>Tap "Link a Device"</li>
+                            <li>Point your phone at this screen to scan the code</li>
+                        </ol>
+                    </div>
+
+                    <div class="session-info">
+                        <p><strong>Session ID:</strong> <span id="currentSessionId">-</span></p>
+                    </div>
+                </div>
+
+                <!-- Step 4: Success -->
+                <div id="step-success" class="step">
+                    <div class="success-icon">✓</div>
+                    <h2>Session Created Successfully!</h2>
+                    
+                    <div class="session-details">
+                        <div class="detail-item">
+                            <label>Session ID:</label>
+                            <div class="copy-box">
+                                <input type="text" id="sessionIdInput" readonly>
+                                <button id="copyBtn" class="btn btn-secondary">Copy</button>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <label>Phone Number:</label>
+                            <p id="phoneNumber">-</p>
+                        </div>
+
+                        <div class="detail-item">
+                            <label>Expires At:</label>
+                            <p id="expiresAt">-</p>
+                        </div>
+                    </div>
+
+                    <div class="next-steps">
+                        <h4>🚀 Next Steps:</h4>
+                        <ol>
+                            <li>Copy your Session ID above</li>
+                            <li>Go to your DEAD-X-BOT deployment (Render/Heroku)</li>
+                            <li>Set environment variable: <code>SESSION_ID</code></li>
+                            <li>Deploy your bot - it will connect automatically!</li>
+                        </ol>
+                    </div>
+
+                    <div class="button-group">
+                        <a href="/scan" class="btn btn-primary">Generate Another Session</a>
+                        <a href="/" class="btn btn-secondary">Go Home</a>
+                    </div>
+                </div>
+
+                <!-- Step 5: Error -->
+                <div id="step-error" class="step">
+                    <div class="error-icon">✗</div>
+                    <h2>Error Occurred</h2>
+                    <p id="errorMessage">Something went wrong. Please try again.</p>
+                    <button id="retryBtn" class="btn btn-primary">Try Again</button>
+                </div>
+            </div>
+
+            <!-- Status Messages -->
+            <div id="statusMessage" class="status-message"></div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 DEAD-X-BOT | Session Scanner</p>
+        </footer>
+    </div>
+
+    <script src="/js/scanner.js"></script>
+</body>
+</html>
