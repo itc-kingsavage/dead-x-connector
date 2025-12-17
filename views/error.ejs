@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error - DEAD-X-BOT</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <h1>💀 DEAD-X-BOT</h1>
+                <p class="subtitle">Session Scanner</p>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="error-page">
+                <div class="error-icon">✗</div>
+                <h2><%= message || 'An Error Occurred' %></h2>
+                
+                <% if (error && error.status) { %>
+                    <p class="error-code">Error Code: <%= error.status %></p>
+                <% } %>
+
+                <p class="error-description">
+                    We encountered an issue processing your request. 
+                    This could be due to:
+                </p>
+
+                <ul class="error-reasons">
+                    <li>Invalid or expired session ID</li>
+                    <li>Network connectivity issues</li>
+                    <li>Server temporarily unavailable</li>
+                    <li>Invalid request parameters</li>
+                </ul>
+
+                <div class="button-group">
+                    <a href="/scan" class="btn btn-primary">Try Scanning Again</a>
+                    <a href="/" class="btn btn-secondary">Go Home</a>
+                </div>
+
+                <div class="help-section">
+                    <h4>Need Help?</h4>
+                    <p>If the problem persists, please check:</p>
+                    <ul>
+                        <li>Your internet connection</li>
+                        <li>Server status at the deployment platform</li>
+                        <li>MongoDB connection status</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 DEAD-X-BOT</p>
+        </footer>
+    </div>
+</body>
+</html>
