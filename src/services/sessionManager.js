@@ -1,3 +1,5 @@
+// src/services/sessionManager.js - FIXED VERSION
+
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const Session = require('../models/Session');
 const { v4: uuidv4 } = require('uuid');
@@ -51,9 +53,13 @@ class SessionManager {
           }
         });
 
+        let qrRetries = 0;
+        const maxQrRetries = 3;
+
         // QR Code event
         client.on('qr', async (qr) => {
-          console.log(`QR Code generated for session: ${sessionId}`);
+          console.log(`QR Code generated for session: ${sessionId} (Attempt ${qrRetries + 1})`);
+          qrRetries++;
           
           // Generate QR code as data URL
           const qrDataURL = await qrcode.toDataURL(qr);
@@ -66,70 +72,109 @@ class SessionManager {
 
           // Emit to frontend via Socket.io
           io.emit(`qr-${sessionId}`, { qr: qrDataURL });
+
+          // If too many QR codes, something is wrong
+          if (qrRetries >= maxQrRetries) {
+            console.log(`Too many QR retries for ${sessionId}, stopping...`);
+            await client.destroy();
+            reject(new Error('Too many QR code generations'));
+          }
         });
 
         // Authenticated event
         client.on('authenticated', async () => {
-          console.log(`Session authenticated: ${sessionId}`);
-          io.emit(`authenticated-${sessionId}`, { message: 'Authenticated!' });
+          console.log(`✅ Session authenticated: ${sessionId}`);
+          io.emit(`authenticated-${sessionId}`, { message: 'Authenticated! Connecting...' });
         });
 
-        // Ready event
+        // Ready event - THIS IS THE KEY MOMENT!
         client.on('ready', async () => {
-          console.log(`Client ready: ${sessionId}`);
+          console.log(`✅ Client ready: ${sessionId}`);
           
           const info = client.info;
           const phoneNumber = info.wid.user;
 
-          // Get session data (this would be the authentication tokens)
+          // Get session data
           const sessionData = {
             phoneNumber,
             authenticated: true,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            platform: info.platform || 'unknown',
+            pushname: info.pushname || 'Unknown'
           };
 
-          // Encrypt and save to MongoDB
+          // Encrypt and save to MongoDB with ACTIVE status
           const encrypted = this.encryptData(sessionData);
           
-          await Session.findOneAndUpdate(
+          const updatedSession = await Session.findOneAndUpdate(
             { sessionId },
             {
               sessionData: encrypted,
               phoneNumber,
-              status: 'active',
+              status: 'active', // ← CRITICAL: Mark as ACTIVE!
               qrCode: null
-            }
+            },
+            { new: true }
           );
 
+          console.log(`✅ Session ${sessionId} marked as ACTIVE with phone: ${phoneNumber}`);
+
+          // Emit success to frontend
           io.emit(`ready-${sessionId}`, { 
             sessionId, 
             phoneNumber,
-            message: 'Session created successfully!' 
+            status: 'active',
+            platform: info.platform,
+            message: 'Session created successfully! You can now use this Session ID in your bot.' 
           });
 
-          // Store client reference
+          // Store client reference briefly
           this.activeClients.set(sessionId, client);
           
-          resolve({ sessionId, phoneNumber });
+          // Auto-disconnect after 60 seconds to save resources
+          // But keep session data in database!
+          setTimeout(async () => {
+            console.log(`Auto-disconnecting scanner client for: ${sessionId}`);
+            try {
+              if (this.activeClients.has(sessionId)) {
+                await client.destroy();
+                this.activeClients.delete(sessionId);
+                console.log(`✅ Scanner client disconnected: ${sessionId}`);
+              }
+            } catch (e) {
+              console.error('Error auto-disconnecting:', e.message);
+            }
+          }, 60000); // 60 seconds
+          
+          resolve({ sessionId, phoneNumber, status: 'active' });
         });
 
-        // Error handling
+        // Auth failure event
         client.on('auth_failure', async (msg) => {
-          console.error(`Auth failure for ${sessionId}:`, msg);
+          console.error(`❌ Auth failure for ${sessionId}:`, msg);
           await Session.findOneAndUpdate(
             { sessionId },
             { status: 'expired' }
           );
-          io.emit(`error-${sessionId}`, { error: 'Authentication failed' });
+          io.emit(`error-${sessionId}`, { error: 'Authentication failed. Please try again.' });
+          
+          // Clean up
+          if (this.activeClients.has(sessionId)) {
+            await client.destroy();
+            this.activeClients.delete(sessionId);
+          }
+          
           reject(new Error('Authentication failed'));
         });
 
+        // Disconnected event
         client.on('disconnected', async (reason) => {
           console.log(`Client disconnected: ${sessionId}`, reason);
           this.activeClients.delete(sessionId);
         });
 
         // Initialize the client
+        console.log(`Initializing WhatsApp client for: ${sessionId}`);
         await client.initialize();
 
       } catch (error) {
@@ -151,9 +196,11 @@ class SessionManager {
       metadata
     });
 
+    console.log(`Created new session: ${sessionId}`);
+
     // Start WhatsApp client initialization (don't wait for it)
     this.initializeClient(sessionId, io).catch(err => {
-      console.error(`Failed to initialize session ${sessionId}:`, err);
+      console.error(`Failed to initialize session ${sessionId}:`, err.message);
     });
 
     return { sessionId, session };
@@ -193,7 +240,11 @@ class SessionManager {
     // Destroy client if active
     const client = this.activeClients.get(sessionId);
     if (client) {
-      await client.destroy();
+      try {
+        await client.destroy();
+      } catch (e) {
+        console.error('Error destroying client:', e.message);
+      }
       this.activeClients.delete(sessionId);
     }
 
