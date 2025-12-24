@@ -33,8 +33,7 @@ class ScannerService {
       '--no-zygote',
       '--single-process',
       '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-extensions'
+      '--disable-software-rasterizer'
     ],
     timeout: 0
   },
