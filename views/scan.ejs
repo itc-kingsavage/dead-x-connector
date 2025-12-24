@@ -3,122 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %></title>
-    <link rel="stylesheet" href="/css/style.css">
-    <script src="/socket.io/socket.io.js"></script>
+    <title>Scan QR Code - DEAD-X Scanner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        #qr-container {
+            margin: 30px 0;
+            min-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #qr-image {
+            max-width: 100%;
+            border: 3px solid #667eea;
+            border-radius: 10px;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .session-id {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 1.1em;
+            color: #667eea;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header class="header">
-            <div class="logo">
-                <h1>💀 DEAD-X-BOT</h1>
-                <p class="subtitle">Session Scanner</p>
-            </div>
-            <a href="/" class="btn btn-secondary">← Back Home</a>
-        </header>
-
-        <main class="scan-content">
-            <div class="scan-container">
-                <!-- Step 1: Initial State -->
-                <div id="step-initial" class="step active">
-                    <h2>Generate WhatsApp Session</h2>
-                    <p>Click the button below to generate a QR code</p>
-                    <button id="startScanBtn" class="btn btn-primary btn-large">
-                        Generate QR Code
-                    </button>
-                </div>
-
-                <!-- Step 2: Loading -->
-                <div id="step-loading" class="step">
-                    <div class="loader"></div>
-                    <p>Initializing WhatsApp client...</p>
-                    <p class="text-muted">This may take a few seconds</p>
-                </div>
-
-                <!-- Step 3: QR Code Display -->
-                <div id="step-qr" class="step">
-                    <h2>Scan QR Code</h2>
-                    <p>Open WhatsApp on your phone and scan this QR code</p>
-                    
-                    <div class="qr-container">
-                        <img id="qrImage" src="" alt="QR Code">
-                    </div>
-
-                    <div class="instructions">
-                        <h4>📱 How to scan:</h4>
-                        <ol>
-                            <li>Open WhatsApp on your phone</li>
-                            <li>Tap Menu (⋮) or Settings</li>
-                            <li>Tap "Linked Devices"</li>
-                            <li>Tap "Link a Device"</li>
-                            <li>Point your phone at this screen to scan the code</li>
-                        </ol>
-                    </div>
-
-                    <div class="session-info">
-                        <p><strong>Session ID:</strong> <span id="currentSessionId">-</span></p>
-                    </div>
-                </div>
-
-                <!-- Step 4: Success -->
-                <div id="step-success" class="step">
-                    <div class="success-icon">✓</div>
-                    <h2>Session Created Successfully!</h2>
-                    
-                    <div class="session-details">
-                        <div class="detail-item">
-                            <label>Session ID:</label>
-                            <div class="copy-box">
-                                <input type="text" id="sessionIdInput" readonly>
-                                <button id="copyBtn" class="btn btn-secondary">Copy</button>
-                            </div>
-                        </div>
-                        
-                        <div class="detail-item">
-                            <label>Phone Number:</label>
-                            <p id="phoneNumber">-</p>
-                        </div>
-
-                        <div class="detail-item">
-                            <label>Expires At:</label>
-                            <p id="expiresAt">-</p>
-                        </div>
-                    </div>
-
-                    <div class="next-steps">
-                        <h4>🚀 Next Steps:</h4>
-                        <ol>
-                            <li>Copy your Session ID above</li>
-                            <li>Go to your DEAD-X-BOT deployment (Render/Heroku)</li>
-                            <li>Set environment variable: <code>SESSION_ID</code></li>
-                            <li>Deploy your bot - it will connect automatically!</li>
-                        </ol>
-                    </div>
-
-                    <div class="button-group">
-                        <a href="/scan" class="btn btn-primary">Generate Another Session</a>
-                        <a href="/" class="btn btn-secondary">Go Home</a>
-                    </div>
-                </div>
-
-                <!-- Step 5: Error -->
-                <div id="step-error" class="step">
-                    <div class="error-icon">✗</div>
-                    <h2>Error Occurred</h2>
-                    <p id="errorMessage">Something went wrong. Please try again.</p>
-                    <button id="retryBtn" class="btn btn-primary">Try Again</button>
-                </div>
-            </div>
-
-            <!-- Status Messages -->
-            <div id="statusMessage" class="status-message"></div>
-        </main>
-
-        <footer class="footer">
-            <p>&copy; 2024 DEAD-X-BOT | Session Scanner</p>
-        </footer>
+        <h1>💀 DEAD-X Scanner</h1>
+        
+        <div id="status" class="status loading">
+            <div class="loader"></div>
+            <p>Initializing scanner...</p>
+        </div>
+        
+        <div id="qr-container"></div>
+        
+        <div id="session-info" style="display: none;">
+            <h3>✅ Connected Successfully!</h3>
+            <p>Your Session ID has been sent to your WhatsApp!</p>
+            <div class="session-id" id="session-id"></div>
+        </div>
     </div>
 
-    <script src="/js/scanner.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const statusDiv = document.getElementById('status');
+        const qrContainer = document.getElementById('qr-container');
+        const sessionInfo = document.getElementById('session-info');
+        const sessionIdDiv = document.getElementById('session-id');
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            statusDiv.innerHTML = '<div class="loader"></div><p>Generating QR code...</p>';
+            socket.emit('start-scan', {});
+        });
+
+        socket.on('qr', (data) => {
+            console.log('QR received');
+            statusDiv.className = 'status loading';
+            statusDiv.innerHTML = '<p>⏳ Scan this QR code with WhatsApp</p>';
+            qrContainer.innerHTML = `<img id="qr-image" src="${data.qr}" alt="QR Code">`;
+        });
+
+        socket.on('loading', (data) => {
+            statusDiv.innerHTML = `<p>⏳ Loading: ${data.percent}% - ${data.message}</p>`;
+        });
+
+        socket.on('authenticated', (data) => {
+            statusDiv.className = 'status success';
+            statusDiv.innerHTML = '<p>✅ Authenticated! Setting up session...</p>';
+            sessionIdDiv.textContent = data.sessionId;
+        });
+
+        socket.on('ready', (data) => {
+            qrContainer.style.display = 'none';
+            statusDiv.style.display = 'none';
+            sessionInfo.style.display = 'block';
+        });
+
+        socket.on('error', (data) => {
+            statusDiv.className = 'status error';
+            statusDiv.innerHTML = `<p>❌ Error: ${data.message}</p>`;
+        });
+
+        socket.on('auth_failure', (data) => {
+            statusDiv.className = 'status error';
+            statusDiv.innerHTML = `<p>❌ Authentication failed: ${data.message}</p>`;
+        });
+    </script>
 </body>
 </html>
