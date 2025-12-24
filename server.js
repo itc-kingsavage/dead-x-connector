@@ -38,13 +38,17 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes
+// Routes - WITH TITLE PASSED
 app.get('/', (req, res) => {
-  res.render('index');
+  res.render('index', { 
+    title: 'DEAD-X Session Scanner - Home' 
+  });
 });
 
 app.get('/scan', (req, res) => {
-  res.render('scan');
+  res.render('scan', { 
+    title: 'Scan QR Code - DEAD-X Scanner' 
+  });
 });
 
 // Initialize scanner service
