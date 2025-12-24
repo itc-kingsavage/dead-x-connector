@@ -1,81 +1,138 @@
 const express = require('express');
 const router = express.Router();
-const sessionManager = require('../services/sessionManager');
+const Session = require('../models/Session');
 
-// Get session data (for DEAD-X-BOT to use)
-router.get('/:sessionId', async (req, res) => {
+// GET session by ID
+router.get('/:id', async (req, res) => {
   try {
-    const { sessionId } = req.params;
-    const sessionData = await sessionManager.validateSession(sessionId);
+    const { id } = req.params;
+    
+    const session = await Session.findOne({ sessionId: id });
+    
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found'
+      });
+    }
 
     res.json({
       success: true,
-      session: sessionData
+      session: {
+        sessionId: session.sessionId,
+        phoneNumber: session.phoneNumber,
+        status: session.status,
+        data: session.data,
+        expiresAt: session.expiresAt,
+        createdAt: session.createdAt,
+        lastUpdated: session.lastUpdated
+      }
     });
 
   } catch (error) {
-    res.status(404).json({
-      success: false,
-      error: 'Session not found or invalid',
-      message: error.message
-    });
-  }
-});
-
-// Validate session (check if still active)
-router.get('/validate/:sessionId', async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const session = await sessionManager.getSession(sessionId);
-
-    const isValid = !session.isExpired() && session.status === 'active';
-
-    res.json({
-      success: true,
-      valid: isValid,
-      sessionId: session.sessionId,
-      status: session.status,
-      expiresAt: session.expiresAt
-    });
-
-  } catch (error) {
-    res.status(404).json({
-      success: false,
-      valid: false,
-      error: 'Session not found',
-      message: error.message
-    });
-  }
-});
-
-// Delete/revoke session
-router.delete('/:sessionId', async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const result = await sessionManager.deleteSession(sessionId);
-
-    res.json({
-      success: true,
-      message: result.message
-    });
-
-  } catch (error) {
+    console.error('Error fetching session:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete session',
-      message: error.message
+      message: 'Internal server error'
     });
   }
 });
 
-// List all active sessions (optional - for admin panel)
+// UPDATE session (for bot to update session data)
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data } = req.body;
+
+    const session = await Session.findOne({ sessionId: id });
+    
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found'
+      });
+    }
+
+    session.data = data;
+    session.lastUpdated = new Date();
+    await session.save();
+
+    res.json({
+      success: true,
+      message: 'Session updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error updating session:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update session'
+    });
+  }
+});
+
+// VALIDATE session
+router.get('/validate/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const session = await Session.findOne({ sessionId: id });
+    
+    if (!session) {
+      return res.json({ valid: false, message: 'Session not found' });
+    }
+
+    const now = new Date();
+    const isExpired = session.expiresAt < now;
+    const isActive = session.status === 'active';
+
+    res.json({
+      valid: !isExpired && isActive,
+      status: session.status,
+      expiresAt: session.expiresAt,
+      isExpired
+    });
+
+  } catch (error) {
+    console.error('Error validating session:', error);
+    res.status(500).json({ valid: false, message: 'Error validating session' });
+  }
+});
+
+// DELETE session
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await Session.deleteOne({ sessionId: id });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Session deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete session'
+    });
+  }
+});
+
+// LIST all sessions
 router.get('/list/all', async (req, res) => {
   try {
-    const Session = require('../models/Session');
-    const sessions = await Session.find({ status: 'active' })
-      .select('sessionId phoneNumber status createdAt expiresAt')
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const sessions = await Session.find({})
+      .select('sessionId phoneNumber status expiresAt createdAt')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -84,10 +141,10 @@ router.get('/list/all', async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Error listing sessions:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch sessions',
-      message: error.message
+      message: 'Failed to list sessions'
     });
   }
 });
