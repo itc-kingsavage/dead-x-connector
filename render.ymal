@@ -1,18 +1,8 @@
 services:
-- type: web
+  - type: web
     name: dead-x-session-scanner
-    env: node
+    env: docker
+    dockerfilePath: ./Dockerfile
     region: oregon
     plan: free
-    buildCommand: |
-      npm install
-      npx puppeteer browsers install chrome
-    startCommand: node server.js
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: false
-      - key: PUPPETEER_EXECUTABLE_PATH
-        sync: false
     healthCheckPath: /health
