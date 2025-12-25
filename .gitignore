@@ -1,7 +1,13 @@
 # Environment variables
 .env
+.env.local
+.env.production
 
-# WhatsApp session data (DO NOT COMMIT)
+# Baileys auth data (DO NOT COMMIT)
+.auth/
+auth_info_baileys/
+
+# Old WhatsApp-Web.js data (if migrating)
 .wwebjs_auth/
 .wwebjs_cache/
 
@@ -12,16 +18,20 @@ node_modules/
 logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pino-*.log
 
 # OS files
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
+*.iml
 
 # Build files
 dist/
@@ -30,3 +40,20 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# Database dumps
+*.dump
+*.sql
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Lock files (keep package-lock.json but not yarn.lock if not using yarn)
+yarn.lock
+
+# PM2 files
+.pm2/
+
+# Test files
+test-results/
