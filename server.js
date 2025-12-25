@@ -4,7 +4,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const connectDB = require('./src/config/database');
-const ScannerService = require('./src/services/scannerService');
+const BaileysScanner = require('./src/services/baileysScanner');
 const sessionRoutes = require('./src/routes/session');
 
 const app = express();
@@ -31,14 +31,15 @@ app.get('/health', (req, res) => {
   const scannerService = req.app.get('scannerService');
   res.json({
     status: 'ok',
-    service: 'DEAD-X-SESSION-SCANNER',
+    service: 'DEAD-X-SESSION-SCANNER (Baileys)',
+    version: 'Baileys v6.7.8',
     activeScans: scannerService ? scannerService.getActiveScans() : 0,
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
 });
 
-// Routes - WITH TITLE PASSED
+// Routes
 app.get('/', (req, res) => {
   res.render('index', { 
     title: 'DEAD-X Session Scanner - Home' 
@@ -51,8 +52,8 @@ app.get('/scan', (req, res) => {
   });
 });
 
-// Initialize scanner service
-const scannerService = new ScannerService(io);
+// Initialize Baileys scanner
+const scannerService = new BaileysScanner(io);
 app.set('scannerService', scannerService);
 
 // API routes
@@ -65,7 +66,7 @@ io.on('connection', (socket) => {
   socket.on('start-scan', async (data) => {
     try {
       const sessionId = `DEADX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-      console.log(`📱 Starting scan for ${sessionId}`);
+      console.log(`📱 Starting Baileys scan for ${sessionId}`);
       
       await scannerService.startScan(sessionId, socket.id);
       
@@ -95,16 +96,19 @@ io.on('connection', (socket) => {
 async function start() {
   try {
     console.log('\n╔═══════════════════════════════════════╗');
-    console.log('║  💀 DEAD-X SESSION SCANNER v1.0.0    ║');
+    console.log('║  💀 DEAD-X SESSION SCANNER v2.0.0    ║');
+    console.log('║       Powered by Baileys 🚀          ║');
     console.log('╚═══════════════════════════════════════╝\n');
 
     console.log('🔄 Connecting to MongoDB...');
     await connectDB();
 
     server.listen(PORT, () => {
-      console.log(`✅ Scanner running on port ${PORT}`);
+      console.log(`✅ Baileys scanner running on port ${PORT}`);
       console.log(`✅ Health: http://localhost:${PORT}/health`);
-      console.log(`✅ Ready to scan WhatsApp sessions\n`);
+      console.log(`✅ QR generation: ~3 seconds (instant!)`);
+      console.log(`✅ No Chromium needed!`);
+      console.log('');
     });
 
   } catch (error) {
