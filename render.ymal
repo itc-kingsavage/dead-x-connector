@@ -1,8 +1,12 @@
 services:
   - type: web
     name: dead-x-session-scanner
-    env: docker
-    dockerfilePath: ./Dockerfile
+    env: node
     region: oregon
     plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
     healthCheckPath: /health
