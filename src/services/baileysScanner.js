@@ -1,4 +1,4 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const Session = require('../models/Session');
 const fs = require('fs').promises;
@@ -9,7 +9,7 @@ class BaileysScanner {
   constructor(io) {
     this.io = io;
     this.activeSessions = new Map();
-    this.logger = pino({ level: 'silent' }); // Silent logger for production
+    this.logger = pino({ level: 'silent' });
   }
 
   async startScan(sessionId, socketId) {
@@ -32,24 +32,32 @@ class BaileysScanner {
       await fs.mkdir(authPath, { recursive: true });
 
       // Get latest Baileys version
-      const { version } = await fetchLatestBaileysVersion();
+      const { version, isLatest } = await fetchLatestBaileysVersion();
       console.log(`📱 Using WhatsApp version: ${version.join('.')}`);
 
       // Load auth state
       const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
-      // Create socket connection
+      // IMPROVED: Create socket with better connection settings
       const sock = makeWASocket({
         version,
         logger: this.logger,
         printQRInTerminal: false,
         auth: state,
-        browser: ['DEAD-X Scanner', 'Chrome', '110.0.0'],
+        browser: Browsers.ubuntu('Chrome'), // Use Ubuntu Chrome instead of custom
         connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 0,
-        keepAliveIntervalMs: 10000,
+        defaultQueryTimeoutMs: undefined,
+        keepAliveIntervalMs: 30000, // Increased from 10s to 30s
         emitOwnEvents: true,
-        getMessage: async () => undefined
+        markOnlineOnConnect: false, // Don't mark online during scan
+        syncFullHistory: false, // Don't sync history during scan
+        getMessage: async () => undefined,
+        // CRITICAL: Better connection options
+        shouldIgnoreJid: () => false,
+        retryRequestDelayMs: 250,
+        maxMsgRetryCount: 5,
+        // CRITICAL: Add mobile flag
+        mobile: false
       });
 
       // Store socket reference
@@ -57,33 +65,58 @@ class BaileysScanner {
 
       let qrGenerated = false;
       let authenticated = false;
+      let qrRetries = 0;
+      const MAX_QR_RETRIES = 3;
 
-      // QR Code Event (INSTANT!)
+      // QR Code Event
       sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         // QR Code generation
-        if (qr && !qrGenerated) {
+        if (qr) {
           try {
-            console.log(`✅ QR code generated for ${sessionId}`);
-            console.timeEnd(`baileys-scan-${sessionId}`);
-            qrGenerated = true;
+            qrRetries++;
+            
+            if (!qrGenerated) {
+              console.log(`✅ QR code generated for ${sessionId}`);
+              console.timeEnd(`baileys-scan-${sessionId}`);
+              qrGenerated = true;
+            } else {
+              console.log(`🔄 QR code refreshed (${qrRetries}/${MAX_QR_RETRIES}) for ${sessionId}`);
+            }
 
             const qrImage = await qrcode.toDataURL(qr);
             
             this.io.to(socketId).emit('qr', {
               sessionId,
               qr: qrImage,
-              timestamp: Date.now()
+              timestamp: Date.now(),
+              retry: qrRetries
             });
 
-            console.log(`📤 QR code sent to client (Baileys)`);
+            console.log(`📤 QR code sent to client (attempt ${qrRetries})`);
+
+            // Notify if max retries reached
+            if (qrRetries >= MAX_QR_RETRIES) {
+              this.io.to(socketId).emit('qr_timeout', {
+                message: 'QR code expired. Please refresh and try again.'
+              });
+            }
+
           } catch (error) {
             console.error('Error generating QR:', error);
             this.io.to(socketId).emit('error', {
               message: 'Failed to generate QR code'
             });
           }
+        }
+
+        // Connection opening (connecting)
+        if (connection === 'connecting') {
+          console.log(`🔄 ${sessionId} is connecting...`);
+          this.io.to(socketId).emit('connecting', {
+            message: 'Connecting to WhatsApp...'
+          });
         }
 
         // Connection opened (authenticated)
@@ -135,37 +168,49 @@ class BaileysScanner {
             this.io.to(socketId).emit('authenticated', {
               sessionId,
               phoneNumber,
+              userName: user.name,
               expiresAt
             });
 
+            // Wait a bit before sending message
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             // Send Session ID via WhatsApp
-            const message = 
-              `✅ *Session Connected Successfully!*\n\n` +
-              `🆔 Your Session ID:\n\`\`\`${sessionId}\`\`\`\n\n` +
-              `📱 Phone: ${phoneNumber}\n` +
-              `👤 Name: ${user.name}\n` +
-              `⏰ Expires: 7 days from now\n\n` +
-              `💾 Use this Session ID to deploy your bot!\n\n` +
-              `🔥 Developed by D3AD_XMILE`;
+            try {
+              const message = 
+                `✅ *Session Connected Successfully!*\n\n` +
+                `🆔 Your Session ID:\n\`\`\`${sessionId}\`\`\`\n\n` +
+                `📱 Phone: ${phoneNumber}\n` +
+                `👤 Name: ${user.name}\n` +
+                `⏰ Expires: 7 days from now\n\n` +
+                `💾 Use this Session ID to deploy your bot!\n\n` +
+                `🔥 Developed by D3AD_XMILE`;
 
-            await sock.sendMessage(user.id, { text: message });
-            console.log(`✅ Session ID sent via WhatsApp: ${sessionId}`);
+              await sock.sendMessage(user.id, { text: message });
+              console.log(`✅ Session ID sent via WhatsApp: ${sessionId}`);
+            } catch (msgError) {
+              console.error('Error sending WhatsApp message:', msgError);
+              // Don't fail if message sending fails
+            }
 
-            // Disconnect after sending message
+            // Disconnect after a delay
             setTimeout(async () => {
               try {
                 await sock.logout();
                 this.activeSessions.delete(sessionId);
                 console.log(`🗑️  Socket disconnected: ${sessionId}`);
+                
+                // Clean up auth files
+                await fs.rm(authPath, { recursive: true, force: true });
               } catch (err) {
-                console.error('Error during logout:', err);
+                console.error('Error during cleanup:', err);
               }
             }, 5000);
 
           } catch (error) {
             console.error('Error saving session:', error);
             this.io.to(socketId).emit('error', {
-              message: 'Failed to save session'
+              message: 'Failed to save session: ' + error.message
             });
           }
         }
@@ -173,34 +218,59 @@ class BaileysScanner {
         // Connection closed
         if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
-          const reason = lastDisconnect?.error?.output?.payload?.message;
+          const reason = lastDisconnect?.error?.output?.payload?.message || 'Unknown reason';
           
-          console.log(`🔌 ${sessionId} disconnected:`, reason || statusCode);
+          console.log(`🔌 ${sessionId} disconnected:`, reason);
 
+          // Handle different disconnection reasons
           if (statusCode === DisconnectReason.loggedOut) {
-            console.log('User logged out');
-            this.io.to(socketId).emit('logged_out', {
-              message: 'Logged out from WhatsApp'
+            console.log('❌ User logged out');
+            this.io.to(socketId).emit('error', {
+              message: 'Session logged out. Please scan again.'
             });
           } else if (statusCode === DisconnectReason.restartRequired) {
-            console.log('Restart required');
+            console.log('⚠️  Restart required - attempting reconnection...');
+            // Don't emit error, Baileys will auto-reconnect
+          } else if (statusCode === DisconnectReason.connectionClosed) {
+            console.log('⚠️  Connection closed unexpectedly');
             this.io.to(socketId).emit('error', {
-              message: 'Connection lost, please try again'
+              message: 'Connection lost. Please try scanning again.'
+            });
+          } else if (statusCode === DisconnectReason.timedOut) {
+            console.log('⏱️  Connection timed out');
+            this.io.to(socketId).emit('error', {
+              message: 'Connection timed out. Please try again.'
+            });
+          } else if (reason.includes('QR refs attempts ended')) {
+            console.log('❌ QR code expired');
+            this.io.to(socketId).emit('error', {
+              message: 'QR code expired. Please refresh and scan again.'
+            });
+          } else {
+            console.log('❌ Connection failed:', reason);
+            this.io.to(socketId).emit('error', {
+              message: 'Connection failed. Please try again.'
             });
           }
 
           this.activeSessions.delete(sessionId);
+          
+          // Clean up auth files on failure
+          try {
+            await fs.rm(authPath, { recursive: true, force: true });
+          } catch (cleanupError) {
+            console.error('Error cleaning up auth files:', cleanupError);
+          }
         }
       });
 
       // Credentials update (auto-save)
       sock.ev.on('creds.update', saveCreds);
 
-      // Messages update (for logging)
+      // Messages update (for confirming connection is alive)
       sock.ev.on('messages.upsert', async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.key.fromMe && msg.message) {
-          console.log(`📨 Message received in ${sessionId}`);
+        if (messages[0] && !authenticated) {
+          console.log(`📨 Message detected in ${sessionId} - connection is alive`);
         }
       });
 
@@ -223,6 +293,14 @@ class BaileysScanner {
         this.activeSessions.delete(sessionId);
       }
 
+      // Clean up auth files
+      const authPath = path.join(process.cwd(), '.auth', sessionId);
+      try {
+        await fs.rm(authPath, { recursive: true, force: true });
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+
       throw error;
     }
   }
@@ -233,6 +311,11 @@ class BaileysScanner {
       if (sock) {
         await sock.logout();
         this.activeSessions.delete(sessionId);
+        
+        // Clean up auth files
+        const authPath = path.join(process.cwd(), '.auth', sessionId);
+        await fs.rm(authPath, { recursive: true, force: true });
+        
         console.log(`🛑 Baileys scan stopped for ${sessionId}`);
         return true;
       }
@@ -254,7 +337,12 @@ class BaileysScanner {
     for (const [sessionId, sock] of this.activeSessions.entries()) {
       promises.push(
         sock.logout()
-          .then(() => console.log(`✅ Cleaned up ${sessionId}`))
+          .then(() => {
+            console.log(`✅ Cleaned up ${sessionId}`);
+            // Clean up auth files
+            const authPath = path.join(process.cwd(), '.auth', sessionId);
+            return fs.rm(authPath, { recursive: true, force: true });
+          })
           .catch((err) => console.error(`❌ Error cleaning ${sessionId}:`, err))
       );
     }
