@@ -9,69 +9,34 @@ const sessionSchema = new mongoose.Schema({
   },
   phoneNumber: {
     type: String,
-    default: null
-  },
-  sessionData: {
-    type: String, // Encrypted JSON string
     required: true
   },
-  botName: {
-    type: String,
-    default: 'DEAD-X-BOT'
+  data: {
+    type: Object,
+    required: true
   },
   status: {
     type: String,
-    enum: ['pending', 'active', 'expired', 'revoked'],
-    default: 'pending'
+    enum: ['active', 'inactive', 'expired'],
+    default: 'active'
   },
-  qrCode: {
-    type: String,
-    default: null
+  expiresAt: {
+    type: Date,
+    required: true
   },
   createdAt: {
     type: Date,
     default: Date.now
   },
-  lastUsed: {
+  lastUpdated: {
     type: Date,
     default: Date.now
-  },
-  expiresAt: {
-    type: Date,
-    default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-  },
-  metadata: {
-    userAgent: String,
-    ipAddress: String,
-    deviceInfo: Object
   }
-}, {
-  timestamps: true
 });
 
-// Index for auto-deletion of expired sessions
+// Auto-delete expired sessions
 sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-// Methods
-sessionSchema.methods.isExpired = function() {
-  return new Date() > this.expiresAt;
-};
+const Session = mongoose.model('Session', sessionSchema);
 
-sessionSchema.methods.updateLastUsed = function() {
-  this.lastUsed = new Date();
-  return this.save();
-};
-
-// Static methods
-sessionSchema.statics.findBySessionId = function(sessionId) {
-  return this.findOne({ sessionId, status: { $ne: 'expired' } });
-};
-
-sessionSchema.statics.cleanupExpired = async function() {
-  const result = await this.deleteMany({
-    expiresAt: { $lt: new Date() }
-  });
-  return result.deletedCount;
-};
-
-module.exports = mongoose.model('Session', sessionSchema);
+module.exports = Session;
