@@ -31,8 +31,9 @@ app.get('/health', (req, res) => {
   const scannerService = req.app.get('scannerService');
   res.json({
     status: 'ok',
-    service: 'DEAD-X-SESSION-SCANNER (Baileys)',
-    version: 'Baileys v6.7.8',
+    service: 'DEAD-X-SESSION-SCANNER',
+    version: '2.0.0',
+    library: 'Baileys v6.7.8',
     activeScans: scannerService ? scannerService.getActiveScans() : 0,
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
@@ -65,7 +66,11 @@ io.on('connection', (socket) => {
 
   socket.on('start-scan', async (data) => {
     try {
-      const sessionId = `DEADX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      // GENERATE FRESH SESSION ID WITH TIMESTAMP
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const sessionId = `DEADX-${timestamp}-${random}`;
+      
       console.log(`📱 Starting Baileys scan for ${sessionId}`);
       
       await scannerService.startScan(sessionId, socket.id);
@@ -106,7 +111,7 @@ async function start() {
     server.listen(PORT, () => {
       console.log(`✅ Baileys scanner running on port ${PORT}`);
       console.log(`✅ Health: http://localhost:${PORT}/health`);
-      console.log(`✅ QR generation: ~3 seconds (instant!)`);
+      console.log(`✅ QR generation: ~2 seconds (instant!)`);
       console.log(`✅ No Chromium needed!`);
       console.log('');
     });
