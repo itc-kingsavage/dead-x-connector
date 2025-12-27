@@ -39,6 +39,43 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+// Database test endpoint
+app.get('/test-db', async (req, res) => {
+  try {
+    const Session = require('./src/models/Session');
+    
+    // Try to create a test session
+    const testSession = {
+      sessionId: 'TEST-' + Date.now(),
+      phoneNumber: '1234567890',
+      data: { test: true },
+      status: 'active',
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      createdAt: new Date(),
+      lastUpdated: new Date()
+    };
+    
+    const saved = await Session.create(testSession);
+    
+    // Delete it
+    await Session.deleteOne({ sessionId: testSession.sessionId });
+    
+    res.json({
+      success: true,
+      message: 'Database write test successful',
+      testId: saved._id
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Database test failed',
+      error: error.message,
+      errorCode: error.code,
+      errorName: error.name
+    });
+  }
+});
 
 // Routes
 app.get('/', (req, res) => {
