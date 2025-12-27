@@ -17,16 +17,23 @@ class BaileysScanner {
       console.log(`🔄 Starting Baileys scan for: ${sessionId}`);
       console.time(`baileys-scan-${sessionId}`);
 
+      // DELETE ANY EXISTING SESSION WITH SAME ID
       const existingSession = await Session.findOne({ sessionId });
-      if (existingSession && existingSession.status === 'active') {
-        console.log(`⚠️  Session ${sessionId} already active`);
-        this.io.to(socketId).emit('error', {
-          message: 'Session already active'
-        });
-        return { success: false, message: 'Session already active' };
+      if (existingSession) {
+        console.log(`⚠️  Deleting existing session: ${sessionId}`);
+        await Session.deleteOne({ sessionId });
       }
 
+      // DELETE OLD AUTH FILES
       const authPath = path.join(process.cwd(), '.auth', sessionId);
+      try {
+        await fs.rm(authPath, { recursive: true, force: true });
+        console.log(`🗑️  Cleaned old auth files`);
+      } catch (e) {
+        // Ignore if doesn't exist
+      }
+
+      // CREATE FRESH AUTH DIRECTORY
       await fs.mkdir(authPath, { recursive: true });
 
       const { version } = await fetchLatestBaileysVersion();
@@ -40,7 +47,7 @@ class BaileysScanner {
 
       const createSocket = async () => {
         connectionAttempts++;
-        console.log(`🔄 Connection attempt ${connectionAttempts}/${MAX_ATTEMPTS} for ${sessionId}`);
+        console.log(`🔄 Connection attempt ${connectionAttempts}/${MAX_ATTEMPTS}`);
 
         const sock = makeWASocket({
           version,
@@ -145,19 +152,16 @@ class BaileysScanner {
                 }
               }
 
-              await Session.findOneAndUpdate(
-                { sessionId },
-                {
-                  sessionId,
-                  phoneNumber,
-                  data: authData,
-                  status: 'active',
-                  expiresAt,
-                  createdAt: new Date(),
-                  lastUpdated: new Date()
-                },
-                { upsert: true, new: true }
-              );
+              // SAVE TO DATABASE
+              await Session.create({
+                sessionId,
+                phoneNumber,
+                data: authData,
+                status: 'active',
+                expiresAt,
+                createdAt: new Date(),
+                lastUpdated: new Date()
+              });
 
               console.log(`💾 Session saved to database: ${sessionId}`);
 
@@ -177,7 +181,7 @@ class BaileysScanner {
                   `📱 Phone: ${phoneNumber}\n` +
                   `👤 Name: ${user.name}\n` +
                   `⏰ Valid for: 7 days\n\n` +
-                  `💾 Use this Session ID to deploy your bot!\n\n` +
+                  `💾 Copy this Session ID to deploy your bot!\n\n` +
                   `🔥 Developed by D3AD_XMILE`;
 
                 await sock.sendMessage(user.id, { text: message });
@@ -190,10 +194,9 @@ class BaileysScanner {
                 try {
                   await sock.logout();
                   this.activeSessions.delete(sessionId);
-                  await fs.rm(authPath, { recursive: true, force: true });
-                  console.log(`🗑️  Cleaned up ${sessionId}`);
+                  console.log(`🗑️  Scanner disconnected: ${sessionId}`);
                 } catch (err) {
-                  console.error('Cleanup error:', err.message);
+                  console.error('Logout error:', err.message);
                 }
               }, 5000);
 
@@ -209,11 +212,10 @@ class BaileysScanner {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const reason = lastDisconnect?.error?.output?.payload?.message || 'Unknown';
             
-            console.log(`🔌 ${sessionId} disconnected: ${reason} (code: ${statusCode})`);
+            console.log(`🔌 ${sessionId} disconnected: ${reason}`);
 
             this.activeSessions.delete(sessionId);
 
-            // Handle reconnection logic
             if (!authenticated && shouldReconnect) {
               if (statusCode === DisconnectReason.restartRequired) {
                 console.log(`♻️  Restart required, reconnecting...`);
@@ -222,28 +224,29 @@ class BaileysScanner {
               }
 
               if (statusCode === DisconnectReason.connectionClosed && connectionAttempts < MAX_ATTEMPTS) {
-                console.log(`🔄 Connection closed, retrying (${connectionAttempts}/${MAX_ATTEMPTS})...`);
+                console.log(`🔄 Retrying (${connectionAttempts}/${MAX_ATTEMPTS})...`);
                 setTimeout(() => createSocket(), 3000);
                 return;
               }
 
               if (statusCode === DisconnectReason.timedOut && connectionAttempts < MAX_ATTEMPTS) {
-                console.log(`⏱️  Timed out, retrying (${connectionAttempts}/${MAX_ATTEMPTS})...`);
+                console.log(`⏱️  Timed out, retrying...`);
                 setTimeout(() => createSocket(), 3000);
                 return;
               }
             }
 
-            // Final failure
             if (!authenticated) {
               let errorMessage = 'Connection failed. Please try again.';
               
               if (statusCode === DisconnectReason.loggedOut) {
-                errorMessage = 'Session logged out. Please scan QR again.';
+                errorMessage = 'Session logged out. Please scan again.';
               } else if (reason.includes('QR refs')) {
-                errorMessage = 'QR code expired. Please refresh and scan again.';
+                errorMessage = 'QR code expired. Please refresh and try again.';
+              } else if (reason.includes('conflict')) {
+                errorMessage = 'Another device is using this session. Please close other sessions and try again.';
               } else if (connectionAttempts >= MAX_ATTEMPTS) {
-                errorMessage = 'Maximum retry attempts reached. Please refresh and try again.';
+                errorMessage = 'Maximum retries reached. Please refresh and try again.';
               }
 
               this.io.to(socketId).emit('error', { message: errorMessage });
@@ -260,7 +263,6 @@ class BaileysScanner {
         sock.ev.on('creds.update', saveCreds);
       };
 
-      // Start the connection
       await createSocket();
 
       return {
