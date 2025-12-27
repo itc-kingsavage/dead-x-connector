@@ -141,6 +141,8 @@ class BaileysScanner {
               const expiresAt = new Date();
               expiresAt.setDate(expiresAt.getDate() + 7);
 
+              // Read auth files
+              console.log('📂 Reading auth files...');
               const authFiles = await fs.readdir(authPath);
               const authData = {};
               
@@ -151,20 +153,48 @@ class BaileysScanner {
                   authData[file] = JSON.parse(content);
                 }
               }
+              
+              console.log(`📦 Loaded ${Object.keys(authData).length} auth files`);
 
-              // SAVE TO DATABASE
-              await Session.create({
-                sessionId,
-                phoneNumber,
-                data: authData,
-                status: 'active',
-                expiresAt,
-                createdAt: new Date(),
-                lastUpdated: new Date()
-              });
+              // SAVE TO DATABASE WITH ERROR HANDLING
+              try {
+                console.log('💾 Saving to database...');
+                
+                // Delete any existing session first
+                await Session.deleteOne({ sessionId });
+                
+                // Create new session
+                const savedSession = await Session.create({
+                  sessionId,
+                  phoneNumber,
+                  data: authData,
+                  status: 'active',
+                  expiresAt,
+                  createdAt: new Date(),
+                  lastUpdated: new Date()
+                });
 
-              console.log(`💾 Session saved to database: ${sessionId}`);
+                console.log(`✅ Session saved successfully!`);
+                console.log(`   Document ID: ${savedSession._id}`);
+                console.log(`   Phone: ${savedSession.phoneNumber}`);
+                console.log(`   Expires: ${savedSession.expiresAt}`);
 
+              } catch (dbError) {
+                console.error('❌ Database save failed:', dbError.message);
+                console.error('   Error code:', dbError.code);
+                console.error('   Error name:', dbError.name);
+                
+                if (dbError.code === 11000) {
+                  console.error('   Reason: Duplicate session ID');
+                }
+                
+                // Still continue to send WhatsApp message
+                this.io.to(socketId).emit('warning', {
+                  message: 'Session created but database save failed. Session ID will still be sent.'
+                });
+              }
+
+              // Emit success to client
               this.io.to(socketId).emit('authenticated', {
                 sessionId,
                 phoneNumber,
@@ -174,7 +204,10 @@ class BaileysScanner {
 
               await new Promise(resolve => setTimeout(resolve, 3000));
 
+              // Send Session ID via WhatsApp
               try {
+                console.log('📤 Sending Session ID to WhatsApp...');
+                
                 const message = 
                   `✅ *Session Connected Successfully!*\n\n` +
                   `🆔 Session ID:\n\`\`\`${sessionId}\`\`\`\n\n` +
@@ -186,10 +219,12 @@ class BaileysScanner {
 
                 await sock.sendMessage(user.id, { text: message });
                 console.log(`✅ Session ID sent via WhatsApp`);
+                
               } catch (msgError) {
-                console.error('Failed to send WhatsApp message:', msgError.message);
+                console.error('❌ Failed to send WhatsApp message:', msgError.message);
               }
 
+              // Disconnect after delay
               setTimeout(async () => {
                 try {
                   await sock.logout();
@@ -201,9 +236,11 @@ class BaileysScanner {
               }, 5000);
 
             } catch (error) {
-              console.error('Error in authentication handler:', error);
+              console.error('❌ Error in authentication handler:', error);
+              console.error('Stack trace:', error.stack);
+              
               this.io.to(socketId).emit('error', {
-                message: 'Authentication succeeded but failed to save session'
+                message: 'Authentication error: ' + error.message
               });
             }
           }
