@@ -39,43 +39,6 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-// Database test endpoint
-app.get('/test-db', async (req, res) => {
-  try {
-    const Session = require('./src/models/Session');
-    
-    // Try to create a test session
-    const testSession = {
-      sessionId: 'TEST-' + Date.now(),
-      phoneNumber: '1234567890',
-      data: { test: true },
-      status: 'active',
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      createdAt: new Date(),
-      lastUpdated: new Date()
-    };
-    
-    const saved = await Session.create(testSession);
-    
-    // Delete it
-    await Session.deleteOne({ sessionId: testSession.sessionId });
-    
-    res.json({
-      success: true,
-      message: 'Database write test successful',
-      testId: saved._id
-    });
-    
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Database test failed',
-      error: error.message,
-      errorCode: error.code,
-      errorName: error.name
-    });
-  }
-});
 
 // Routes
 app.get('/', (req, res) => {
@@ -87,6 +50,44 @@ app.get('/', (req, res) => {
 app.get('/scan', (req, res) => {
   res.render('scan', { 
     title: 'Scan QR Code - DEAD-X Scanner' 
+  });
+});
+
+// Manual logout endpoint
+app.post('/logout/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const scannerService = req.app.get('scannerService');
+    
+    const stopped = await scannerService.stopScan(sessionId);
+    
+    if (stopped) {
+      res.json({
+        success: true,
+        message: 'Session logged out successfully',
+        sessionId
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Session not found or already logged out'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// List active sessions
+app.get('/active-sessions', (req, res) => {
+  const scannerService = req.app.get('scannerService');
+  res.json({
+    activeScans: scannerService.getActiveScans(),
+    message: 'Number of currently connected scanner sessions',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -148,8 +149,9 @@ async function start() {
     server.listen(PORT, () => {
       console.log(`✅ Baileys scanner running on port ${PORT}`);
       console.log(`✅ Health: http://localhost:${PORT}/health`);
+      console.log(`✅ Active Sessions: http://localhost:${PORT}/active-sessions`);
       console.log(`✅ QR generation: ~2 seconds (instant!)`);
-      console.log(`✅ No Chromium needed!`);
+      console.log(`✅ Scanner stays connected after authentication`);
       console.log('');
     });
 
