@@ -160,10 +160,8 @@ class BaileysScanner {
               try {
                 console.log('💾 Saving to database...');
                 
-                // Delete any existing session first
                 await Session.deleteOne({ sessionId });
                 
-                // Create new session
                 const savedSession = await Session.create({
                   sessionId,
                   phoneNumber,
@@ -177,7 +175,6 @@ class BaileysScanner {
                 console.log(`✅ Session saved successfully!`);
                 console.log(`   Document ID: ${savedSession._id}`);
                 console.log(`   Phone: ${savedSession.phoneNumber}`);
-                console.log(`   Expires: ${savedSession.expiresAt}`);
 
               } catch (dbError) {
                 console.error('❌ Database save failed:', dbError.message);
@@ -188,7 +185,6 @@ class BaileysScanner {
                   console.error('   Reason: Duplicate session ID');
                 }
                 
-                // Still continue to send WhatsApp message
                 this.io.to(socketId).emit('warning', {
                   message: 'Session created but database save failed. Session ID will still be sent.'
                 });
@@ -215,6 +211,8 @@ class BaileysScanner {
                   `👤 Name: ${user.name}\n` +
                   `⏰ Valid for: 7 days\n\n` +
                   `💾 Copy this Session ID to deploy your bot!\n\n` +
+                  `📌 This device will stay active in your Linked Devices\n` +
+                  `📱 Check: Settings → Linked Devices → "Ubuntu Chrome"\n\n` +
                   `🔥 Developed by D3AD_XMILE`;
 
                 await sock.sendMessage(user.id, { text: message });
@@ -224,16 +222,13 @@ class BaileysScanner {
                 console.error('❌ Failed to send WhatsApp message:', msgError.message);
               }
 
-              // Disconnect after delay
-              setTimeout(async () => {
-                try {
-                  await sock.logout();
-                  this.activeSessions.delete(sessionId);
-                  console.log(`🗑️  Scanner disconnected: ${sessionId}`);
-                } catch (err) {
-                  console.error('Logout error:', err.message);
-                }
-              }, 5000);
+              // STAY CONNECTED - Don't logout!
+              console.log(`✅ Scanner staying connected as linked device`);
+              console.log(`📱 This will show as "Ubuntu Chrome" in your Linked Devices`);
+              console.log(`🔌 Scanner will remain active until manually logged out`);
+              
+              // Keep the socket in activeSessions map so it stays connected
+              // It will automatically reconnect if connection drops
 
             } catch (error) {
               console.error('❌ Error in authentication handler:', error);
@@ -250,6 +245,13 @@ class BaileysScanner {
             const reason = lastDisconnect?.error?.output?.payload?.message || 'Unknown';
             
             console.log(`🔌 ${sessionId} disconnected: ${reason}`);
+
+            // If authenticated and connection closed, try to reconnect
+            if (authenticated) {
+              console.log(`♻️  Authenticated session disconnected, reconnecting...`);
+              setTimeout(() => createSocket(), 5000);
+              return;
+            }
 
             this.activeSessions.delete(sessionId);
 
@@ -338,7 +340,7 @@ class BaileysScanner {
         const authPath = path.join(process.cwd(), '.auth', sessionId);
         await fs.rm(authPath, { recursive: true, force: true });
         
-        console.log(`🛑 Scan stopped: ${sessionId}`);
+        console.log(`🛑 Scan stopped and logged out: ${sessionId}`);
         return true;
       }
       return false;
