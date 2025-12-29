@@ -17,14 +17,12 @@ class BaileysScanner {
       console.log(`🔄 Starting Baileys scan for: ${sessionId}`);
       console.time(`baileys-scan-${sessionId}`);
 
-      // DELETE ANY EXISTING SESSION WITH SAME ID
       const existingSession = await Session.findOne({ sessionId });
       if (existingSession) {
         console.log(`⚠️  Deleting existing session: ${sessionId}`);
         await Session.deleteOne({ sessionId });
       }
 
-      // DELETE OLD AUTH FILES
       const authPath = path.join(process.cwd(), '.auth', sessionId);
       try {
         await fs.rm(authPath, { recursive: true, force: true });
@@ -33,7 +31,6 @@ class BaileysScanner {
         // Ignore if doesn't exist
       }
 
-      // CREATE FRESH AUTH DIRECTORY
       await fs.mkdir(authPath, { recursive: true });
 
       const { version } = await fetchLatestBaileysVersion();
@@ -60,33 +57,12 @@ class BaileysScanner {
           browser: ['Ubuntu', 'Chrome', '20.0.04'],
           connectTimeoutMs: 60000,
           defaultQueryTimeoutMs: 0,
-          keepAliveIntervalMs: 10000,
+          keepAliveIntervalMs: 30000,
           emitOwnEvents: true,
-          markOnlineOnConnect: false,
-          syncFullHistory: false,
+          markOnlineOnConnect: false,  // PASSIVE MODE
+          syncFullHistory: false,       // PASSIVE MODE
           getMessage: async () => undefined,
           generateHighQualityLinkPreview: false,
-          patchMessageBeforeSending: (message) => {
-            const requiresPatch = !!(
-              message.buttonsMessage ||
-              message.templateMessage ||
-              message.listMessage
-            );
-            if (requiresPatch) {
-              message = {
-                viewOnceMessage: {
-                  message: {
-                    messageContextInfo: {
-                      deviceListMetadataVersion: 2,
-                      deviceListMetadata: {},
-                    },
-                    ...message,
-                  },
-                },
-              };
-            }
-            return message;
-          },
         });
 
         this.activeSessions.set(sessionId, sock);
@@ -141,7 +117,6 @@ class BaileysScanner {
               const expiresAt = new Date();
               expiresAt.setDate(expiresAt.getDate() + 7);
 
-              // Read auth files
               console.log('📂 Reading auth files...');
               const authFiles = await fs.readdir(authPath);
               const authData = {};
@@ -156,10 +131,8 @@ class BaileysScanner {
               
               console.log(`📦 Loaded ${Object.keys(authData).length} auth files`);
 
-              // SAVE TO DATABASE WITH ERROR HANDLING
               try {
                 console.log('💾 Saving to database...');
-                
                 await Session.deleteOne({ sessionId });
                 
                 const savedSession = await Session.create({
@@ -174,23 +147,16 @@ class BaileysScanner {
 
                 console.log(`✅ Session saved successfully!`);
                 console.log(`   Document ID: ${savedSession._id}`);
-                console.log(`   Phone: ${savedSession.phoneNumber}`);
 
               } catch (dbError) {
                 console.error('❌ Database save failed:', dbError.message);
                 console.error('   Error code:', dbError.code);
-                console.error('   Error name:', dbError.name);
-                
-                if (dbError.code === 11000) {
-                  console.error('   Reason: Duplicate session ID');
-                }
                 
                 this.io.to(socketId).emit('warning', {
-                  message: 'Session created but database save failed. Session ID will still be sent.'
+                  message: 'Session created but database save failed'
                 });
               }
 
-              // Emit success to client
               this.io.to(socketId).emit('authenticated', {
                 sessionId,
                 phoneNumber,
@@ -200,7 +166,6 @@ class BaileysScanner {
 
               await new Promise(resolve => setTimeout(resolve, 3000));
 
-              // Send Session ID via WhatsApp
               try {
                 console.log('📤 Sending Session ID to WhatsApp...');
                 
@@ -211,8 +176,9 @@ class BaileysScanner {
                   `👤 Name: ${user.name}\n` +
                   `⏰ Valid for: 7 days\n\n` +
                   `💾 Copy this Session ID to deploy your bot!\n\n` +
-                  `📌 This device will stay active in your Linked Devices\n` +
-                  `📱 Check: Settings → Linked Devices → "Ubuntu Chrome"\n\n` +
+                  `📱 Scanner remains as linked device (passive)\n` +
+                  `🤖 Your bot will become the active device\n` +
+                  `👁️ Scanner shows "last seen" in Linked Devices\n\n` +
                   `🔥 Developed by D3AD_XMILE`;
 
                 await sock.sendMessage(user.id, { text: message });
@@ -222,17 +188,19 @@ class BaileysScanner {
                 console.error('❌ Failed to send WhatsApp message:', msgError.message);
               }
 
-              // STAY CONNECTED - Don't logout!
-              console.log(`✅ Scanner staying connected as linked device`);
-              console.log(`📱 This will show as "Ubuntu Chrome" in your Linked Devices`);
-              console.log(`🔌 Scanner will remain active until manually logged out`);
+              // STAY CONNECTED IN PASSIVE MODE
+              console.log(`✅ Scanner entering PASSIVE MODE`);
+              console.log(`📱 Will show "last seen" in Linked Devices`);
+              console.log(`🤖 Bot will be the active device`);
               
-              // Keep the socket in activeSessions map so it stays connected
-              // It will automatically reconnect if connection drops
+              // Remove message listeners to prevent conflicts
+              sock.ev.removeAllListeners('messages.upsert');
+              sock.ev.removeAllListeners('messages.update');
+              
+              console.log(`🔇 Scanner is now passive - not processing messages`);
 
             } catch (error) {
               console.error('❌ Error in authentication handler:', error);
-              console.error('Stack trace:', error.stack);
               
               this.io.to(socketId).emit('error', {
                 message: 'Authentication error: ' + error.message
@@ -246,7 +214,6 @@ class BaileysScanner {
             
             console.log(`🔌 ${sessionId} disconnected: ${reason}`);
 
-            // If authenticated and connection closed, try to reconnect
             if (authenticated) {
               console.log(`♻️  Authenticated session disconnected, reconnecting...`);
               setTimeout(() => createSocket(), 5000);
